@@ -28,6 +28,7 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TOKEN_FILE = os.path.join(os.path.dirname(__file__), "token.json")
 CREDENTIALS_FILE = os.path.join(os.path.dirname(__file__), "credentials.json")
 CALENDARS_FILE = os.path.join(os.path.dirname(__file__), "calendars.json")
+SUBSCRIBERS_FILE = os.path.join(os.path.dirname(__file__), "subscribers.json")
 GS_KEY_PATTERN = re.compile(r"\[GS:(\w+:\w+)\]")
 
 GCAL_COLOR_NAMES = {
@@ -94,12 +95,23 @@ def _save_calendar_map(cal_map):
         json.dump(cal_map, f, indent=2)
 
 
-def _get_share_emails():
-    """Parse GRADESCOPE_SHARE_EMAILS into a list of email addresses."""
-    raw = os.environ.get("GRADESCOPE_SHARE_EMAILS", "").strip()
-    if not raw:
-        return []
-    return [e.strip() for e in raw.split(",") if e.strip()]
+def _load_subscribers():
+    """Load subscribers.json and return the raw dict."""
+    if os.path.exists(SUBSCRIBERS_FILE):
+        with open(SUBSCRIBERS_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def _get_share_emails(course_name):
+    """Return the list of emails that should be shared on a course calendar."""
+    subs = _load_subscribers()
+    emails = set()
+    for e in subs.get("*", []):
+        emails.add(e.lower())
+    for e in subs.get(course_name, []):
+        emails.add(e.lower())
+    return sorted(emails)
 
 
 def _share_calendar(service, calendar_id, emails, already_shared):
@@ -149,7 +161,7 @@ def get_or_create_calendar(service, course_name, cal_map, color_map):
 
     if cal_id and _calendar_exists(service, cal_id):
         # Calendar exists — share with any new emails
-        emails = _get_share_emails()
+        emails = _get_share_emails(course_name)
         if emails:
             updated_shared = _share_calendar(service, cal_id, emails, already_shared)
             cal_map[course_name] = {"id": cal_id, "shared": updated_shared}
@@ -181,7 +193,7 @@ def get_or_create_calendar(service, course_name, cal_map, color_map):
         pass  # non-critical
 
     # Share with configured emails (all new for a fresh calendar)
-    emails = _get_share_emails()
+    emails = _get_share_emails(course_name)
     shared = []
     if emails:
         shared = _share_calendar(service, cal_id, emails, [])
@@ -284,8 +296,8 @@ def _parse_courses_filter():
 
 
 def _short_course_name(name):
-    """Truncate course name at the first slash. 'CSE 452 / CSE M 552 -26wi' → 'CSE 452'."""
-    return name.split("/")[0].strip()
+    """Truncate course name at the first slash or dash. 'CSE 452 / CSE M 552' or 'CSE 452 - 26wi' → 'CSE 452'."""
+    return re.split(r"[/\-]", name, maxsplit=1)[0].strip()
 
 
 def _course_matches(course, term_filter, courses_filter):

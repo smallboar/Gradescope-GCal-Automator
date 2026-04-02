@@ -37,7 +37,6 @@ jobs:
           GRADESCOPE_EMAIL: ${{ secrets.GRADESCOPE_EMAIL }}
           GRADESCOPE_PASSWORD: ${{ secrets.GRADESCOPE_PASSWORD }}
           GRADESCOPE_TERM: ${{ secrets.GRADESCOPE_TERM }}
-          GRADESCOPE_SHARE_EMAILS: ${{ secrets.GRADESCOPE_SHARE_EMAILS }}
         run: python sync.py
 
       - name: Commit calendars.json if changed
