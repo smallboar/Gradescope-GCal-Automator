@@ -296,8 +296,12 @@ def _parse_courses_filter():
 
 
 def _short_course_name(name):
-    """Truncate course name at the first slash or dash. 'CSE 452 / CSE M 552' or 'CSE 452 - 26wi' → 'CSE 452'."""
-    return re.split(r"[/\-]", name, maxsplit=1)[0].strip()
+    """Normalize course name. 'CSE 452 / CSE M 552' → 'CSE 452', 'CSE493G' → 'CSE 493G'."""
+    short = re.split(r"[/\-]", name, maxsplit=1)[0].strip()
+    if " " not in short:
+        # Insert space between letter prefix and digits: "CSE493G" → "CSE 493G"
+        short = re.sub(r"([A-Za-z])(\d)", r"\1 \2", short, count=1)
+    return short
 
 
 def _course_matches(course, term_filter, courses_filter):
