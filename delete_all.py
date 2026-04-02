@@ -1,13 +1,11 @@
 """Delete all Google Calendar events and calendars created by the Gradescope sync script.
 
-Only removes events whose description contains a [GS:...] tag.
-Pass --delete-calendars to also delete the per-course calendars themselves.
+Removes events whose description contains a [GS:...] tag and deletes the per-course calendars.
 """
 
 import json
 import os
 import re
-import sys
 import time
 import logging
 
@@ -53,8 +51,6 @@ def _load_calendar_map():
 
 
 def main():
-    delete_calendars = "--delete-calendars" in sys.argv
-
     creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
@@ -103,8 +99,8 @@ def main():
 
     log.info("Deleted %d events", deleted)
 
-    # Optionally delete the per-course calendars
-    if delete_calendars and cal_map:
+    # Delete the per-course calendars
+    if cal_map:
         for course_name, cal_id in cal_map.items():
             try:
                 api_call_with_retry(
@@ -119,8 +115,6 @@ def main():
 
         os.remove(CALENDARS_FILE)
         log.info("Removed %s", CALENDARS_FILE)
-    elif not delete_calendars and cal_map:
-        log.info("Calendars kept. Pass --delete-calendars to also remove them.")
 
     log.info("Done")
 
