@@ -1,6 +1,6 @@
 # Gradescope → Google Calendar Sync
 
-Scrapes assignments from Gradescope and syncs them to Google Calendar as all-day events. Creates, updates, and deletes events to keep your calendar in sync.
+Scrapes assignments from Gradescope and syncs them to Google Calendar as all-day events. Creates a separate calendar per course, and shares them with configured subscribers. Runs daily via GitHub Actions.
 
 ## Setup
 
@@ -12,22 +12,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Gradescope credentials
-
-Copy `.env.example` to `.env` and fill in your Gradescope login:
-
-```bash
-cp .env.example .env
-```
-
-### 3. Google Calendar API
+### 2. Google Calendar API
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project (or use an existing one)
-3. Enable the **Google Calendar API**
-4. Create **OAuth 2.0 Client ID** credentials (Desktop app type)
-5. Download the JSON and save it as `credentials.json` in the project root
-6. Run the one-time auth flow:
+2. Create a project and enable the **Google Calendar API**
+3. Create **OAuth 2.0 Client ID** credentials (Desktop app type)
+4. Download the JSON and save it as `credentials.json` in the project root
+5. Run the one-time auth flow:
 
 ```bash
 python auth_google.py
@@ -35,67 +26,58 @@ python auth_google.py
 
 This opens a browser for OAuth consent and saves `token.json`.
 
-## Usage
+### 3. GitHub Actions secrets
+
+Add these secrets in **Settings → Secrets and variables → Actions**:
+
+| Secret | Description |
+|--------|-------------|
+| `GOOGLE_CREDENTIALS_JSON` | Contents of `credentials.json` |
+| `GOOGLE_TOKEN_JSON` | Contents of `token.json` |
+| `GRADESCOPE_EMAIL` | Gradescope login email |
+| `GRADESCOPE_PASSWORD` | Gradescope password |
+| `GRADESCOPE_TERM` | Term filter, e.g. `Spring 2026` |
+
+The workflow runs daily at 8:00 AM PST and can be triggered manually from the Actions tab.
+
+## Managing subscribers
+
+Subscribers are stored in `subscribers.json`. Use `*` to subscribe to all courses, or specify a course name for per-course subscriptions.
 
 ```bash
+# Add a subscriber to all courses
+python manage.py add "*" alice@gmail.com
+
+# Add a subscriber to a specific course
+python manage.py add "CSE 452" bob@gmail.com
+
+# Remove a subscriber
+python manage.py remove "CSE 452" bob@gmail.com
+
+# List all subscribers
+python manage.py list
+
+# List subscribers for a specific course
+python manage.py list "CSE 452"
+```
+
+Commit and push `subscribers.json` after making changes — the next sync run will pick them up.
+
+## Running locally
+
+```bash
+# Create a .env file with your Gradescope credentials
+# GRADESCOPE_EMAIL=...
+# GRADESCOPE_PASSWORD=...
+# GRADESCOPE_TERM=Spring 2026
+
 python sync.py
 ```
 
-Output:
+## Cleanup
 
-```
-2026-04-02 10:00:00 INFO Logged in to Gradescope
-2026-04-02 10:00:02 INFO Fetched 12 assignments from Gradescope
-2026-04-02 10:00:03 INFO Created: [CS101] Homework 3 (due 2026-04-10)
-2026-04-02 10:00:04 INFO Sync complete — 1 created, 0 updated, 0 deleted
-```
-
-## Scheduling with cron (macOS/Linux)
-
-Run every 6 hours:
+To delete all synced events and calendars:
 
 ```bash
-crontab -e
+python delete_all.py
 ```
-
-Add:
-
-```
-0 */6 * * * /path/to/venv/bin/python /path/to/sync.py >> /path/to/sync.log 2>&1
-```
-
-Replace paths with your actual install location.
-
-## Scheduling with GitHub Actions (free cloud alternative)
-
-Create `.github/workflows/sync.yml`:
-
-```yaml
-name: Gradescope Calendar Sync
-on:
-  schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python sync.py
-        env:
-          GRADESCOPE_EMAIL: ${{ secrets.GRADESCOPE_EMAIL }}
-          GRADESCOPE_PASSWORD: ${{ secrets.GRADESCOPE_PASSWORD }}
-```
-
-Store your credentials as **GitHub Actions secrets** in the repo settings. For the Google token, base64-encode `token.json` and store it as a secret, then decode it in a step before running `sync.py`:
-
-```yaml
-      - run: echo "${{ secrets.GOOGLE_TOKEN_JSON }}" | base64 -d > token.json
-```
-
-Do the same for `credentials.json` if needed.
