@@ -1,5 +1,6 @@
 """Sync Gradescope assignments to Google Calendar."""
 
+import hashlib
 import json
 import os
 import re
@@ -34,7 +35,8 @@ GCAL_COLOR_NAMES = {
     "banana": "5", "tangerine": "6", "peacock": "7", "graphite": "8",
     "blueberry": "9", "basil": "10", "tomato": "11",
 }
-GCAL_NUM_COLORS = 11
+# Auto-assign order: blueberry, basil, grape, peacock, tomato, lavender, sage, flamingo, banana, tangerine, graphite
+GCAL_AUTO_COLORS = ["9", "10", "3", "7", "11", "1", "2", "4", "5", "6", "8"]
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +166,10 @@ def get_or_create_calendar(service, course_name, cal_map, color_map):
 
 
 def fetch_gs_events(service, calendar_ids):
-    """Fetch all upcoming events from the given calendars that were created by this sync.
+    """Fetch all events from the given calendars that were created by this sync.
 
     Returns a dict mapping GS key to (calendar_id, event) tuple.
     """
-    now = datetime.utcnow().isoformat() + "Z"
     events_map = {}
 
     for cal_id in calendar_ids:
@@ -179,7 +180,6 @@ def fetch_gs_events(service, calendar_ids):
                     lambda cid=cal_id, pt=page_token: service.events()
                     .list(
                         calendarId=cid,
-                        timeMin=now,
                         singleEvents=True,
                         maxResults=2500,
                         pageToken=pt,
@@ -228,7 +228,9 @@ def _get_color_id(course_name, color_map):
     key = course_name.lower()
     if key in color_map:
         return color_map[key]
-    return str((hash(key) % GCAL_NUM_COLORS) + 1)
+    # Stable hash so color doesn't change between runs
+    h = int(hashlib.md5(key.encode()).hexdigest(), 16)
+    return GCAL_AUTO_COLORS[h % len(GCAL_AUTO_COLORS)]
 
 
 # ---------------------------------------------------------------------------
