@@ -46,7 +46,12 @@ def api_call_with_retry(fn, max_retries=3):
 def _load_calendar_map():
     if os.path.exists(CALENDARS_FILE):
         with open(CALENDARS_FILE) as f:
-            return json.load(f)
+            data = json.load(f)
+        # Handle both new format (dict with "id") and legacy (plain string)
+        for key, val in data.items():
+            if isinstance(val, str):
+                data[key] = {"id": val, "shared": []}
+        return data
     return {}
 
 
@@ -60,7 +65,7 @@ def main():
 
     cal_map = _load_calendar_map()
     # Scan all managed calendars plus primary
-    cal_ids = list(set(cal_map.values()) | {"primary"})
+    cal_ids = list({entry["id"] for entry in cal_map.values()} | {"primary"})
 
     # Collect and delete all GS-tagged events
     deleted = 0
@@ -101,7 +106,8 @@ def main():
 
     # Delete the per-course calendars
     if cal_map:
-        for course_name, cal_id in cal_map.items():
+        for course_name, entry in cal_map.items():
+            cal_id = entry["id"]
             try:
                 api_call_with_retry(
                     lambda cid=cal_id: service.calendars().delete(calendarId=cid).execute()

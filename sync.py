@@ -72,15 +72,24 @@ def api_call_with_retry(fn, max_retries=3):
 # ---------------------------------------------------------------------------
 
 def _load_calendar_map():
-    """Load the course_name → calendar_id mapping from disk."""
+    """Load the calendar state from disk.
+
+    Returns dict of course_name → {"id": calendar_id, "shared": [email, ...]}.
+    Handles legacy format (course_name → calendar_id string).
+    """
     if os.path.exists(CALENDARS_FILE):
         with open(CALENDARS_FILE) as f:
-            return json.load(f)
+            data = json.load(f)
+        # Migrate legacy format
+        for key, val in data.items():
+            if isinstance(val, str):
+                data[key] = {"id": val, "shared": []}
+        return data
     return {}
 
 
 def _save_calendar_map(cal_map):
-    """Persist the course_name → calendar_id mapping to disk."""
+    """Persist the calendar state to disk."""
     with open(CALENDARS_FILE, "w") as f:
         json.dump(cal_map, f, indent=2)
 
@@ -93,9 +102,16 @@ def _get_share_emails():
     return [e.strip() for e in raw.split(",") if e.strip()]
 
 
-def _share_calendar(service, calendar_id, emails):
-    """Share a calendar with the given email addresses (reader role)."""
+def _share_calendar(service, calendar_id, emails, already_shared):
+    """Share a calendar with new email addresses only (reader role).
+
+    Skips emails already in already_shared to avoid duplicate notifications.
+    Returns the updated list of shared emails.
+    """
+    already = {e.lower() for e in already_shared}
     for email in emails:
+        if email.lower() in already:
+            continue
         try:
             api_call_with_retry(
                 lambda e=email: service.acl()
@@ -106,11 +122,10 @@ def _share_calendar(service, calendar_id, emails):
                 .execute()
             )
             log.info("Shared calendar %s with %s", calendar_id, email)
-        except HttpError as e:
-            if e.resp.status == 409:
-                pass  # already shared
-            else:
-                log.warning("Could not share calendar with %s: %s", email, e)
+        except HttpError:
+            pass  # non-critical
+        already.add(email.lower())
+    return sorted(already)
 
 
 def _calendar_exists(service, calendar_id):
@@ -128,10 +143,20 @@ def _calendar_exists(service, calendar_id):
 
 def get_or_create_calendar(service, course_name, cal_map, color_map):
     """Return the calendar ID for a course, creating it if needed."""
-    if course_name in cal_map:
-        cal_id = cal_map[course_name]
-        if _calendar_exists(service, cal_id):
-            return cal_id
+    entry = cal_map.get(course_name, {})
+    cal_id = entry.get("id")
+    already_shared = entry.get("shared", [])
+
+    if cal_id and _calendar_exists(service, cal_id):
+        # Calendar exists — share with any new emails
+        emails = _get_share_emails()
+        if emails:
+            updated_shared = _share_calendar(service, cal_id, emails, already_shared)
+            cal_map[course_name] = {"id": cal_id, "shared": updated_shared}
+            _save_calendar_map(cal_map)
+        return cal_id
+
+    if cal_id:
         log.warning("Calendar for %s was deleted externally, recreating", course_name)
 
     body = {"summary": course_name, "timeZone": "America/Los_Angeles"}
@@ -155,12 +180,13 @@ def get_or_create_calendar(service, course_name, cal_map, color_map):
     except HttpError:
         pass  # non-critical
 
-    # Share with configured emails
+    # Share with configured emails (all new for a fresh calendar)
     emails = _get_share_emails()
+    shared = []
     if emails:
-        _share_calendar(service, cal_id, emails)
+        shared = _share_calendar(service, cal_id, emails, [])
 
-    cal_map[course_name] = cal_id
+    cal_map[course_name] = {"id": cal_id, "shared": shared}
     _save_calendar_map(cal_map)
     return cal_id
 
@@ -374,13 +400,15 @@ def sync():
         get_or_create_calendar(service, course_name, cal_map, color_map)
 
     # Build a map of course_name → calendar_id for quick lookup
-    course_to_cal = {name: cal_map[name] for name in course_names if name in cal_map}
+    course_to_cal = {name: cal_map[name]["id"] for name in course_names if name in cal_map}
 
     # Fetch existing GS events from all managed calendars
-    all_cal_ids = list(set(cal_map.values()))
+    all_cal_ids = list({entry["id"] for entry in cal_map.values()})
     existing = fetch_gs_events(service, all_cal_ids)
 
     gs_keys = {a["gs_key"] for a in assignments}
+    # Track which course IDs were fetched this run — only delete stale events from these courses
+    active_course_ids = {a["course_id"] for a in assignments}
     created = updated = deleted = 0
 
     # Create or update
@@ -430,9 +458,10 @@ def sync():
                 log.info("Updated: [%s] %s", a["course_name"], a["name"])
                 updated += 1
 
-    # Delete events no longer in Gradescope
+    # Delete events no longer in Gradescope — only for courses fetched this run
     for key, (cal_id, event) in existing.items():
-        if key not in gs_keys:
+        event_course_id = key.split(":")[0]
+        if key not in gs_keys and event_course_id in active_course_ids:
             api_call_with_retry(
                 lambda cid=cal_id, eid=event["id"]: service.events()
                 .delete(calendarId=cid, eventId=eid)
