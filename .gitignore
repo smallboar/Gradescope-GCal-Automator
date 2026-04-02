@@ -1,6 +1,7 @@
 .env
 token.json
 credentials.json
+calendars.json
 __pycache__/
 *.pyc
 venv/
