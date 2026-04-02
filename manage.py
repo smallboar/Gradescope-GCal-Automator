@@ -28,14 +28,43 @@ def save(data):
         f.write("\n")
 
 
+def _find_email(emails, email):
+    """Find an email in a list case-insensitively. Returns the stored form or None."""
+    for e in emails:
+        if e.lower() == email.lower():
+            return e
+    return None
+
+
 def add(course, email):
     data = load()
     emails = data.get(course, [])
-    if email in emails:
+    if _find_email(emails, email):
         print(f"{email} is already subscribed to {course}")
         return
+
+    if course != "*" and _find_email(data.get("*", []), email):
+        print(f"{email} is already subscribed to all courses via \"*\", no need to add to {course}")
+        return
+
     emails.append(email)
     data[course] = sorted(emails, key=str.lower)
+
+    # Adding to * makes course-specific entries redundant — clean them up
+    if course == "*":
+        removed_from = []
+        for key in list(data):
+            if key == "*":
+                continue
+            existing = _find_email(data[key], email)
+            if existing:
+                data[key].remove(existing)
+                if not data[key]:
+                    del data[key]
+                removed_from.append(key)
+        if removed_from:
+            print(f"Removed {email} from {', '.join(removed_from)} (now covered by \"*\")")
+
     save(data)
     print(f"Added {email} to {course}")
 
@@ -43,16 +72,21 @@ def add(course, email):
 def remove(course, email):
     data = load()
     emails = data.get(course, [])
-    if email not in emails:
+    existing = _find_email(emails, email)
+    if not existing:
         print(f"{email} is not subscribed to {course}")
         return
-    emails.remove(email)
+    emails.remove(existing)
     if not emails:
         del data[course]
     else:
         data[course] = emails
     save(data)
     print(f"Removed {email} from {course}")
+
+    # Warn if still covered by *
+    if course != "*" and _find_email(data.get("*", []), email):
+        print(f"Note: {email} is still subscribed to all courses via \"*\"")
 
 
 def list_subs(course=None):
