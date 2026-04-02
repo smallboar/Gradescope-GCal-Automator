@@ -1,0 +1,46 @@
+name: Sync Gradescope to Google Calendar
+
+on:
+  schedule:
+    # Run daily at 8:00 AM PST (4:00 PM UTC)
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write credentials.json
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > credentials.json
+
+      - name: Write token.json
+        run: echo '${{ secrets.GOOGLE_TOKEN_JSON }}' > token.json
+
+      - name: Run sync
+        env:
+          GRADESCOPE_EMAIL: ${{ secrets.GRADESCOPE_EMAIL }}
+          GRADESCOPE_PASSWORD: ${{ secrets.GRADESCOPE_PASSWORD }}
+          GRADESCOPE_TERM: ${{ secrets.GRADESCOPE_TERM }}
+          GRADESCOPE_SHARE_EMAILS: ${{ secrets.GRADESCOPE_SHARE_EMAILS }}
+        run: python sync.py
+
+      - name: Commit calendars.json if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f calendars.json
+          git diff --cached --quiet || git commit -m "chore: update calendars.json from sync"
+          git push
