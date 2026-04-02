@@ -3,6 +3,7 @@
 Usage:
     python manage.py add <class> <email>
     python manage.py remove <class> <email>
+    python manage.py remove-all <email>
     python manage.py list [<class>]
 
 Use "*" as the class name to subscribe to all courses.
@@ -23,8 +24,15 @@ def load():
 
 
 def save(data):
+    # Keep "*" first in the JSON output
+    ordered = {}
+    if "*" in data:
+        ordered["*"] = data["*"]
+    for key in sorted(data):
+        if key != "*":
+            ordered[key] = data[key]
     with open(SUBSCRIBERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(ordered, f, indent=2)
         f.write("\n")
 
 
@@ -89,6 +97,23 @@ def remove(course, email):
         print(f"Note: {email} is still subscribed to all courses via \"*\"")
 
 
+def remove_all(email):
+    data = load()
+    removed_from = []
+    for key in list(data):
+        existing = _find_email(data[key], email)
+        if existing:
+            data[key].remove(existing)
+            if not data[key]:
+                del data[key]
+            removed_from.append(key)
+    if removed_from:
+        save(data)
+        print(f"Removed {email} from {', '.join(removed_from)}")
+    else:
+        print(f"{email} is not subscribed to any courses")
+
+
 def list_subs(course=None):
     data = load()
     if not data:
@@ -117,6 +142,8 @@ def main():
 
     if cmd == "add" and len(sys.argv) == 4:
         add(sys.argv[2], sys.argv[3])
+    elif cmd == "remove-all" and len(sys.argv) == 3:
+        remove_all(sys.argv[2])
     elif cmd == "remove" and len(sys.argv) == 4:
         remove(sys.argv[2], sys.argv[3])
     elif cmd == "list":

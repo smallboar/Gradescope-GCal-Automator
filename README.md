@@ -51,8 +51,11 @@ python manage.py add "*" alice@gmail.com
 # Add a subscriber to a specific course
 python manage.py add "CSE 452" bob@gmail.com
 
-# Remove a subscriber
+# Remove a subscriber from a specific course
 python manage.py remove "CSE 452" bob@gmail.com
+
+# Remove a subscriber from all courses
+python manage.py remove-all bob@gmail.com
 
 # List all subscribers
 python manage.py list
