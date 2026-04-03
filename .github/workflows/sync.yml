@@ -2,8 +2,8 @@ name: Sync Gradescope to Google Calendar
 
 on:
   schedule:
-    # Run daily at 8:00 AM PST (4:00 PM UTC)
-    - cron: "0 16 * * *"
+    # Run at 8:00 AM and 8:00 PM PST (4:00 PM and 4:00 AM UTC)
+    - cron: "0 4,16 * * *"
   workflow_dispatch:
 
 permissions:
