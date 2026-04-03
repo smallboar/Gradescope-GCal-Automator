@@ -84,3 +84,8 @@ To delete all synced events and calendars:
 ```bash
 python delete_all.py
 ```
+
+## Future work
+
+- **Notion calendar integration** — sync assignments to Notion databases/calendar views
+- **Canvas API support** — pull assignments from Canvas LMS alongside Gradescope
