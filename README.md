@@ -89,3 +89,4 @@ python delete_all.py
 
 - **Notion calendar integration** — sync assignments to Notion databases/calendar views
 - **Canvas API support** — pull assignments from Canvas LMS alongside Gradescope
+- edstem support for ed assignments. first step is if you are using SSO, need to get a password. it doesnt let you, so you need to add another email in settings, then try to log in from that email and then click reset password. your main Edstem email will receive a password reset button which you can then use, so you can then use your new email + password for login to skip SSO. then we can use this to scrape using ZOD or something like that
